@@ -3,6 +3,9 @@
 /* 1/29/2025 */
 
 #include <filesystem>
+#include <cstring>
+#include <string>
+#include <sstream>
 #include "pugixml.hpp"
 
 #ifdef __cplusplus
@@ -80,35 +83,7 @@ void get_timescale(ngx_http_request_t* r, context_t* ctx) {
 }
 
 void get_tfdt(ngx_http_request_t* r, context_t* ctx) {
-    FILE*     fp;
-    long      loc = -1;
-    size_t    num;
-
-    fp = fopen(ctx->audio_seg_name, "rb");
-    if (fp == NULL)
-    {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "_INBAND_ could not open audio seg file \"%s\"\n", ctx->audio_seg_name);
-        return;
-    }
-
-    ctx->audio_seg_contents = (uint8_t*)calloc(ctx->audio_seg_sz, 1);
-    if (ctx->audio_seg_contents == NULL)
-    {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "_INBAND_ get_tfdt, calloc returned NULL\n");
-        return;
-    }
-
-    num = fread(ctx->audio_seg_contents, 1, ctx->audio_seg_sz, fp);
-    if (num < ctx->audio_seg_sz)
-    {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "_INBAND_ num less than file sz num: %lu sz: %lu\n", num, ctx->audio_seg_sz);
-        return;
-    }
-
-    fclose(fp);
+    long loc = -1;
 
     for (int i = 0; i < SCANBUF; i++)
     {
@@ -170,7 +145,7 @@ void int2buf64(uint64_t val, uint8_t* valbuf) {
     valbuf[7] = (uint64_t)val;
 }
 
-void write_styp(FILE* fp) {
+void write_styp(std::stringstream &st) {
     uint8_t  styp_sz_buf[4];
     uint32_t zero = 0x00;
     uint8_t  styp[4] = {'s', 't', 'y', 'p'};
@@ -188,11 +163,10 @@ void write_styp(FILE* fp) {
     memcpy(&seg_buf[12], &zero, 4);
     memcpy(&seg_buf[16], dash, 4);
 
-    fwrite(seg_buf, 1, 20, fp);
-    fflush(fp);
+    st.read((char *)seg_buf, styp_sz);
 }
 
-void write_emsg(ngx_http_request_t* r, FILE* fp, context_t* ctx) {
+void write_emsg(ngx_http_request_t* r, std::stringstream &st, context_t* ctx) {
     uint32_t emsg_sz;
     uint8_t  emsg_sz_buf[4];
     uint8_t  emsg[4] = {'e', 'm', 's', 'g'};
@@ -255,63 +229,49 @@ void write_emsg(ngx_http_request_t* r, FILE* fp, context_t* ctx) {
     }
     fclose(fmpd);
 
-    //write to file
-    fwrite(seg_buf, emsg_sz, 1, fp);
-    fflush(fp);
+    st.read((char *)seg_buf, emsg_sz);
     free(seg_buf);
     seg_buf = NULL;
 }
 
-void concat_audio_seg(ngx_http_request_t* r, FILE* fp, context_t* ctx) {
+void concat_audio_seg(ngx_http_request_t* r, std::stringstream &st, context_t* ctx) {
     if (ctx->audio_seg_contents == NULL)
     {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "_INBAND_ concat_audio_seg: no seg contents, exiting \n");
         exit(1);
     }
-    fwrite(ctx->audio_seg_contents, ctx->audio_seg_sz, 1, fp);
-    fflush(fp);
-    free(ctx->audio_seg_contents);
-    ctx->audio_seg_contents = NULL;
+    st.read((char *)ctx->audio_seg_contents, ctx->audio_seg_sz);
 }
 
 
-void process_audio(ngx_http_request_t* r) {
+std::string inband_process_audio(ngx_http_request_t* r, char *contents, size_t size) {
     context_t ctx;
 
-    /* get the audio seg temp file name and size */
-    ctx.audio_seg_name = (const char*)r->request_body->temp_file->file.name.data;
-    ctx.audio_seg_sz = r->request_body->temp_file->file.offset;
+    /* get the audio seg temp file contents and size */
+    ctx.audio_seg_contents = (uint8_t*)contents;
+    ctx.audio_seg_sz = size;
 
     get_timescale(r, &ctx);
     get_tfdt(r, &ctx);
 
-    FILE* fp;
-    fp = fopen(ctx.audio_seg_name, "wb");
-    if (fp == NULL)
-    {
-        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "_INBAND_ could not open audio seg file \"%s\" for writing\n", ctx.audio_seg_name);
-        return;
-    }
-    write_styp(fp);
-    write_emsg(r, fp, &ctx);
-    concat_audio_seg(r, fp, &ctx);
-    fclose(fp);
+    std::stringstream response;
+    write_styp(response);
+    write_emsg(r, response, &ctx);
+    concat_audio_seg(r, response, &ctx);
+    return response.str();
 }
 
-void process_mpd(ngx_http_request_t* r) {
+std::string inband_process_mpd(ngx_http_request_t* r, char *contents, size_t size) {
 
-    const char* incoming = (const char*)r->request_body->temp_file->file.name.data;
     pugi::xml_document doc;
 
-    pugi::xml_parse_result result = doc.load_file(incoming);
+    pugi::xml_parse_result result = doc.load_buffer(contents, size);
     if (result.status != pugi::status_ok)
     {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "_INBAND_ could not open incoming mpd file \"%s\": %s\n",
-                      incoming, result.description());
-        return;
+                      "_INBAND_ could not load incoming mpd data %d: %s\n",
+                      result.status, result.description());
     }
 
     pugi::xml_node mpd = doc.child("MPD");
@@ -345,19 +305,47 @@ void process_mpd(ngx_http_request_t* r) {
     //cache this mpd as our CURMPD
     doc.save_file(CURMPD);
     //save for serving to requests
-    doc.save_file((const char*)incoming);
+    std::stringstream response;
+    doc.save(response);
+    return response.str();
 }
 
 void inband_process(ngx_http_request_t* r, u_char* path_str) {
-    char* point = NULL;
+    FILE* fp;
+    fp = fopen((char *)path_str, "rb");
+    if (fp == NULL)
+    {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "_INBAND_ could not open file \"%s\" for reading\n", path_str);
+        return;
+    }
 
+    size_t bufsize = r->request_body->temp_file->file.offset;
+    char *contents = (char *)calloc(bufsize, 1);
+    fread(contents, 1, bufsize, fp);
+    fclose(fp);
+
+    std::string payload;
+    char* point = NULL;
     if ( (point = strrchr((char*)path_str,'.')) != NULL )
     {
         if (strcmp(point,".mp4a") == 0)
-            process_audio(r);
-		else
-            process_mpd(r);
+            payload = inband_process_audio(r, contents, bufsize);
+        else if (strcmp(point,".mpd") == 0)
+            payload = inband_process_mpd(r, contents, bufsize);
     }
+
+    fp = fopen((char *)path_str, "wb");
+    if (fp == NULL)
+    {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "_INBAND_ could not open file \"%s\" for writing\n", path_str);
+        return;
+    }
+
+    fwrite(payload.data(), 1, payload.size(), fp);
+    free(contents);
+    fclose(fp);
 }
 
 #ifdef __cplusplus

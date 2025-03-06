@@ -2,6 +2,7 @@ ngx_addon_name=ngx_http_inband_module
 INBAND_SRCS="                                                 \
               $ngx_addon_dir/ngx_http_inband_module.cpp     \
               $ngx_addon_dir/ngx_inband_internal.cpp        \
+              $ngx_addon_dir/pugixml.cpp                    \
               "
 
 if test -n "$ngx_module_link"; then
