@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <fstream>
 #include <string>
 #include "pugixml.hpp"
 
@@ -70,6 +71,14 @@ static ngx_int_t ngx_http_inband_init(ngx_conf_t *cf);
 
 static char *ngx_http_inband(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 void inband_process(ngx_http_request_t *r, u_char* path_str);
+<<<<<<< Updated upstream
+||||||| Stash base
+std::string inband_process_audio(ngx_http_request_t* r, char *contents, size_t size);
+std::string inband_process_mpd(ngx_http_request_t* r, char *contents, size_t size);
+=======
+void inband_process_audio(ngx_http_request_t* r, const char *path_str, size_t size);
+void inband_process_mpd(ngx_http_request_t* r, const char *path_str);
+>>>>>>> Stashed changes
 
 static ngx_conf_bitmask_t  ngx_http_inband_methods_mask[] = {
     { ngx_string("off"), NGX_HTTP_DAV_OFF },
@@ -239,6 +248,151 @@ ngx_http_inband_handler(ngx_http_request_t *r)
     return NGX_DECLINED;
 }
 
+<<<<<<< Updated upstream
+||||||| Stash base
+static ngx_int_t
+ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
+#if 0
+    if (r->method != NGX_HTTP_GET) {
+        return ngx_http_next_body_filter(r, in);
+    }
+#endif
+
+#if 0
+    ngx_chain_t *chain_link = in;
+    std::stringstream contents;
+    int chain_contains_last_buffer = 0;
+    for ( ; ; ) {
+      if (ngx_buf_size(chain_link->buf)) {
+        contents.write((char *)chain_link->buf->pos, ngx_buf_size(chain_link->buf));
+      }
+      if (chain_link->buf->last_buf)
+        chain_contains_last_buffer = 1;
+      if (chain_link->next == NULL)
+        break;
+      chain_link = chain_link->next;
+    }
+
+#endif
+
+#if 0
+    if (strcmp((char *)r->headers_out.content_type.data, "application/dash+xml") == 0) {
+      ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+          "ATENCION ATENCION %d, %s", contents.str().size(), contents.str().data());
+    }
+
+    if (!chain_contains_last_buffer)
+      return ngx_http_next_body_filter(r, in);
+#endif
+
+    std::string payload("############################################################################################");
+#if 0
+    size_t root;
+    ngx_str_t path;
+    if (ngx_http_map_uri_to_path(r, &path, &root, 0) == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                "GET uri couldn't be mapped to a path");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    char *point = strrchr((char*)path.data, '.');
+    if (strcmp((char *)r->headers_out.content_type.data, "audio/mp4") == 0 && strcmp(point, ".mp4") != 0) {
+        //payload = inband_process_audio(r, contents.str().data(), contents.str().size());
+    }
+    else if (strcmp(point, ".mpd") == 0) {
+        //payload = inband_process_mpd(r, contents.str().data(), contents.str().size());
+    }
+    else {
+        return ngx_http_next_body_filter(r, in);
+    }
+
+    ngx_buf_t *b = (ngx_buf_t *)ngx_calloc_buf(r->pool);
+    if (b == NULL) {
+        return NGX_ERROR;
+    }
+#endif
+
+
+#if 0
+    if (ngx_buf_size(chain_link->buf)) {
+      b->pos = (u_char *)ngx_palloc(r->pool, payload.length());
+      payload.copy((char *)b->pos, payload.length());
+      b->last = b->pos + payload.length();
+
+      ngx_chain_t   *added_link;
+
+      added_link = ngx_alloc_chain_link(r->pool);
+      if (added_link == NULL)
+        return NGX_ERROR;
+
+      added_link->buf = b;
+      added_link->next = NULL;
+
+      chain_link->next = added_link;
+
+      chain_link->buf->last_buf = 0;
+      added_link->buf->last_buf = 1;
+    } else {
+      chain_link->buf = b;
+      chain_link->next = NULL;
+
+      chain_link->buf->last_buf = 1;
+    }
+#endif
+
+    return ngx_http_next_body_filter(r, in);
+}
+=======
+static ngx_int_t
+ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
+    if (r->method != NGX_HTTP_GET) {
+        return ngx_http_next_body_filter(r, in);
+    }
+
+    ngx_chain_t *chain_link = in;
+    int chain_contains_last_buffer = 0;
+
+    size_t root;
+    ngx_str_t path;
+    if (ngx_http_map_uri_to_path(r, &path, &root, 0) == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                "GET uri couldn't be mapped to a path");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    char *point = strrchr((char*)path.data, '.');
+    if (strcmp((const char *)r->headers_out.content_type.data, "audio/mp4") == 0 && strcmp(point, ".mp4") != 0) {
+        inband_process_audio(r, (const char *)path.data, r->headers_out.content_length_n);
+    }
+    else if (strcmp((const char *)r->headers_out.content_type.data, "application/dash+xml") == 0) {
+        inband_process_mpd(r, (const char *)path.data);
+    }
+    else {
+        return ngx_http_next_body_filter(r, in);
+    }
+
+    ngx_buf_t *b = (ngx_buf_t *)ngx_calloc_buf(r->pool);
+    if (b == NULL) {
+        return NGX_ERROR;
+    }
+
+    std::ifstream ifs((const char *) path.data);
+    std::string content((std::istreambuf_iterator<char>(ifs)),
+            (std::istreambuf_iterator<char>()));
+
+    b->pos = (u_char *)ngx_palloc(r->pool, r->headers_out.content_length_n);
+    memset(b->pos, ' ', r->headers_out.content_length_n);
+    content.copy((char *)b->pos, content.length());
+    b->last = b->pos + r->headers_out.content_length_n;
+    b->last_buf = 1;
+    b->memory = 1;
+
+    chain_link->buf = b;
+    chain_link->next = NULL;
+
+    return ngx_http_next_body_filter(r, in);
+}
+>>>>>>> Stashed changes
 
 static void
 ngx_http_inband_put_handler(ngx_http_request_t *r)

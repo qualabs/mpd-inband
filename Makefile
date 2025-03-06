@@ -2,7 +2,7 @@
 
 CC = g++
 CFLAGS = -DSEGBUILD -Wall -W -g 
-SRCS = ngx_inband_internal.cpp inband_main.cpp
+SRCS = ngx_inband_internal.cpp inband_main.cpp pugixml.cpp
 HDRS = inband_main.h
 
 %.o: %.cpp
