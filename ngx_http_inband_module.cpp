@@ -246,13 +246,10 @@ ngx_http_inband_handler(ngx_http_request_t *r)
 
 static ngx_int_t
 ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
-#if 0
     if (r->method != NGX_HTTP_GET) {
         return ngx_http_next_body_filter(r, in);
     }
-#endif
 
-#if 0
     ngx_chain_t *chain_link = in;
     std::stringstream contents;
     int chain_contains_last_buffer = 0;
@@ -267,20 +264,10 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
       chain_link = chain_link->next;
     }
 
-#endif
-
-#if 0
-    if (strcmp((char *)r->headers_out.content_type.data, "application/dash+xml") == 0) {
-      ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-          "ATENCION ATENCION %d, %s", contents.str().size(), contents.str().data());
-    }
-
     if (!chain_contains_last_buffer)
       return ngx_http_next_body_filter(r, in);
-#endif
 
-    std::string payload("############################################################################################");
-#if 0
+    std::string payload;
     size_t root;
     ngx_str_t path;
     if (ngx_http_map_uri_to_path(r, &path, &root, 0) == NULL) {
@@ -291,10 +278,10 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
 
     char *point = strrchr((char*)path.data, '.');
     if (strcmp((char *)r->headers_out.content_type.data, "audio/mp4") == 0 && strcmp(point, ".mp4") != 0) {
-        //payload = inband_process_audio(r, contents.str().data(), contents.str().size());
+        payload = inband_process_audio(r, contents.str().data(), contents.str().size());
     }
     else if (strcmp(point, ".mpd") == 0) {
-        //payload = inband_process_mpd(r, contents.str().data(), contents.str().size());
+        payload = inband_process_mpd(r, contents.str().data(), contents.str().size());
     }
     else {
         return ngx_http_next_body_filter(r, in);
@@ -304,10 +291,7 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     if (b == NULL) {
         return NGX_ERROR;
     }
-#endif
 
-
-#if 0
     if (ngx_buf_size(chain_link->buf)) {
       b->pos = (u_char *)ngx_palloc(r->pool, payload.length());
       payload.copy((char *)b->pos, payload.length());
@@ -332,7 +316,6 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
 
       chain_link->buf->last_buf = 1;
     }
-#endif
 
     return ngx_http_next_body_filter(r, in);
 }
