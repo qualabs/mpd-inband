@@ -41,6 +41,9 @@ typedef struct {
 
 static ngx_int_t ngx_http_inband_handler(ngx_http_request_t *r);
 
+static ngx_http_output_body_filter_pt ngx_http_next_body_filter;
+static ngx_int_t ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
+
 static void ngx_http_inband_put_handler(ngx_http_request_t *r);
 
 static ngx_int_t ngx_http_inband_delete_handler(ngx_http_request_t *r);
@@ -71,14 +74,8 @@ static ngx_int_t ngx_http_inband_init(ngx_conf_t *cf);
 
 static char *ngx_http_inband(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 void inband_process(ngx_http_request_t *r, u_char* path_str);
-<<<<<<< Updated upstream
-||||||| Stash base
-std::string inband_process_audio(ngx_http_request_t* r, char *contents, size_t size);
-std::string inband_process_mpd(ngx_http_request_t* r, char *contents, size_t size);
-=======
 void inband_process_audio(ngx_http_request_t* r, const char *path_str, size_t size);
 void inband_process_mpd(ngx_http_request_t* r, const char *path_str);
->>>>>>> Stashed changes
 
 static ngx_conf_bitmask_t  ngx_http_inband_methods_mask[] = {
     { ngx_string("off"), NGX_HTTP_DAV_OFF },
@@ -1250,6 +1247,9 @@ ngx_http_inband_init(ngx_conf_t *cf)
     }
 
     *h = ngx_http_inband_handler;
+
+    ngx_http_next_body_filter = ngx_http_top_body_filter;
+    ngx_http_top_body_filter = ngx_http_inband_body_filter;
 
     return NGX_OK;
 }

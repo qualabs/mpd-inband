@@ -3,14 +3,7 @@
 /* 1/29/2025 */
 
 #include <filesystem>
-<<<<<<< Updated upstream
-||||||| Stash base
 #include <cstring>
-#include <string>
-#include <sstream>
-=======
-#include <cstring>
->>>>>>> Stashed changes
 #include "pugixml.hpp"
 
 #ifdef __cplusplus
@@ -284,28 +277,12 @@ void concat_audio_seg(ngx_http_request_t* r, FILE* fp, context_t* ctx) {
 }
 
 
-<<<<<<< Updated upstream
-void process_audio(ngx_http_request_t* r) {
-||||||| Stash base
-std::string inband_process_audio(ngx_http_request_t* r, char *contents, size_t size) {
-=======
 void inband_process_audio(ngx_http_request_t* r, const char *path_str, size_t size) {
->>>>>>> Stashed changes
     context_t ctx;
 
-<<<<<<< Updated upstream
-    /* get the audio seg temp file name and size */
-    ctx.audio_seg_name = (const char*)r->request_body->temp_file->file.name.data;
-    ctx.audio_seg_sz = r->request_body->temp_file->file.offset;
-||||||| Stash base
-    /* get the audio seg temp file contents and size */
-    ctx.audio_seg_contents = (uint8_t*)contents;
-    ctx.audio_seg_sz = size;
-=======
     /* get the audio seg temp file name and size */
     ctx.audio_seg_name = path_str;
     ctx.audio_seg_sz = size;
->>>>>>> Stashed changes
 
     get_timescale(r, &ctx);
     get_tfdt(r, &ctx);
@@ -324,39 +301,18 @@ void inband_process_audio(ngx_http_request_t* r, const char *path_str, size_t si
     fclose(fp);
 }
 
-<<<<<<< Updated upstream
-void process_mpd(ngx_http_request_t* r) {
-||||||| Stash base
-std::string inband_process_mpd(ngx_http_request_t* r, char *contents, size_t size) {
-=======
 void inband_process_mpd(ngx_http_request_t* r, const char *path_str) {
->>>>>>> Stashed changes
 
     const char* incoming = (const char*)r->request_body->temp_file->file.name.data;
     pugi::xml_document doc;
 
-<<<<<<< Updated upstream
-    pugi::xml_parse_result result = doc.load_file(incoming);
-||||||| Stash base
-    pugi::xml_parse_result result = doc.load_buffer(contents, size);
-=======
     pugi::xml_parse_result result = doc.load_file(path_str);
->>>>>>> Stashed changes
     if (result.status != pugi::status_ok)
     {
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-<<<<<<< Updated upstream
-                      "_INBAND_ could not open incoming mpd file \"%s\": %s\n",
-                      incoming, result.description());
-        return;
-||||||| Stash base
-                      "_INBAND_ could not load incoming mpd data %d: %s\n",
-                      result.status, result.description());
-=======
                       "_INBAND_ could not open incoming mpd file \"%s\": %s\n",
                       path_str, result.description());
         return;
->>>>>>> Stashed changes
     }
 
     pugi::xml_node mpd = doc.child("MPD");
@@ -390,15 +346,7 @@ void inband_process_mpd(ngx_http_request_t* r, const char *path_str) {
     //cache this mpd as our CURMPD
     doc.save_file(CURMPD);
     //save for serving to requests
-<<<<<<< Updated upstream
-    doc.save_file((const char*)incoming);
-||||||| Stash base
-    std::stringstream response;
-    doc.save(response);
-    return response.str();
-=======
     doc.save_file(path_str);
->>>>>>> Stashed changes
 }
 
 void inband_process(ngx_http_request_t* r, u_char* path_str) {
@@ -407,19 +355,9 @@ void inband_process(ngx_http_request_t* r, u_char* path_str) {
     if ( (point = strrchr((char*)path_str,'.')) != NULL )
     {
         if (strcmp(point,".mp4a") == 0)
-<<<<<<< Updated upstream
-            process_audio(r);
-		else
-            process_mpd(r);
-||||||| Stash base
-            payload = inband_process_audio(r, contents, bufsize);
-        else if (strcmp(point,".mpd") == 0)
-            payload = inband_process_mpd(r, contents, bufsize);
-=======
             inband_process_audio(r, (const char *)path_str, r->request_body->temp_file->file.offset);
         else if (strcmp(point,".mpd") == 0)
             inband_process_mpd(r, (const char *)path_str);
->>>>>>> Stashed changes
     }
 }
 
