@@ -41,7 +41,9 @@ typedef struct {
 
 static ngx_int_t ngx_http_inband_handler(ngx_http_request_t *r);
 
+static ngx_http_output_header_filter_pt ngx_http_next_header_filter;
 static ngx_http_output_body_filter_pt ngx_http_next_body_filter;
+static ngx_int_t ngx_http_inband_header_filter(ngx_http_request_t *r);
 static ngx_int_t ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in);
 
 static void ngx_http_inband_put_handler(ngx_http_request_t *r);
@@ -74,7 +76,7 @@ static ngx_int_t ngx_http_inband_init(ngx_conf_t *cf);
 
 static char *ngx_http_inband(ngx_conf_t *cf, ngx_command_t *cmd, void *conf);
 void inband_process(ngx_http_request_t *r, u_char* path_str);
-void inband_process_audio(ngx_http_request_t* r, const char *path_str, size_t size);
+void inband_process_audio(ngx_http_request_t* r, const char *path_str);
 void inband_process_mpd(ngx_http_request_t* r, const char *path_str);
 
 static ngx_conf_bitmask_t  ngx_http_inband_methods_mask[] = {
@@ -245,6 +247,11 @@ ngx_http_inband_handler(ngx_http_request_t *r)
     return NGX_DECLINED;
 }
 
+static ngx_int_t ngx_http_inband_header_filter(ngx_http_request_t *r) {
+  ngx_http_clear_content_length(r);
+  return ngx_http_next_header_filter(r);
+}
+
 static ngx_int_t
 ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     if (r->method != NGX_HTTP_GET) {
@@ -252,7 +259,6 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     }
 
     ngx_chain_t *chain_link = in;
-    int chain_contains_last_buffer = 0;
 
     size_t root;
     ngx_str_t path;
@@ -264,7 +270,7 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
 
     char *point = strrchr((char*)path.data, '.');
     if (strcmp((const char *)r->headers_out.content_type.data, "audio/mp4") == 0 && strcmp(point, ".mp4") != 0) {
-        inband_process_audio(r, (const char *)path.data, r->headers_out.content_length_n);
+        inband_process_audio(r, (const char *)path.data);
     }
     else if (strcmp((const char *)r->headers_out.content_type.data, "application/dash+xml") == 0) {
         inband_process_mpd(r, (const char *)path.data);
@@ -282,10 +288,9 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     std::string content((std::istreambuf_iterator<char>(ifs)),
             (std::istreambuf_iterator<char>()));
 
-    b->pos = (u_char *)ngx_palloc(r->pool, r->headers_out.content_length_n);
-    memset(b->pos, ' ', r->headers_out.content_length_n);
+    b->pos = (u_char *)ngx_palloc(r->pool, content.length());
     content.copy((char *)b->pos, content.length());
-    b->last = b->pos + r->headers_out.content_length_n;
+    b->last = b->pos + content.length();
     b->last_buf = 1;
     b->memory = 1;
 
@@ -1247,6 +1252,9 @@ ngx_http_inband_init(ngx_conf_t *cf)
     }
 
     *h = ngx_http_inband_handler;
+
+    ngx_http_next_header_filter = ngx_http_top_header_filter;
+    ngx_http_top_header_filter = ngx_http_inband_header_filter;
 
     ngx_http_next_body_filter = ngx_http_top_body_filter;
     ngx_http_top_body_filter = ngx_http_inband_body_filter;

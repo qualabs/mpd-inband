@@ -277,12 +277,12 @@ void concat_audio_seg(ngx_http_request_t* r, FILE* fp, context_t* ctx) {
 }
 
 
-void inband_process_audio(ngx_http_request_t* r, const char *path_str, size_t size) {
+void inband_process_audio(ngx_http_request_t* r, const char *path_str) {
     context_t ctx;
 
     /* get the audio seg temp file name and size */
     ctx.audio_seg_name = path_str;
-    ctx.audio_seg_sz = size;
+    ctx.audio_seg_sz = 10000;
 
     get_timescale(r, &ctx);
     get_tfdt(r, &ctx);
@@ -355,7 +355,7 @@ void inband_process(ngx_http_request_t* r, u_char* path_str) {
     if ( (point = strrchr((char*)path_str,'.')) != NULL )
     {
         if (strcmp(point,".mp4a") == 0)
-            inband_process_audio(r, (const char *)path_str, r->request_body->temp_file->file.offset);
+            inband_process_audio(r, (const char *)path_str);
         else if (strcmp(point,".mpd") == 0)
             inband_process_mpd(r, (const char *)path_str);
     }
