@@ -282,7 +282,7 @@ void inband_process_audio(ngx_http_request_t* r, const char *path_str) {
 
     /* get the audio seg temp file name and size */
     ctx.audio_seg_name = path_str;
-    ctx.audio_seg_sz = 10000;
+    ctx.audio_seg_sz = std::filesystem::file_size(path_str);
 
     get_timescale(r, &ctx);
     get_tfdt(r, &ctx);

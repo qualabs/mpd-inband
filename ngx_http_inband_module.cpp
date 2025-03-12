@@ -248,8 +248,11 @@ ngx_http_inband_handler(ngx_http_request_t *r)
 }
 
 static ngx_int_t ngx_http_inband_header_filter(ngx_http_request_t *r) {
-  ngx_http_clear_content_length(r);
-  return ngx_http_next_header_filter(r);
+    r->filter_need_in_memory = 1;
+    if (r == r->main) {
+        ngx_http_clear_content_length(r);
+    }
+    return ngx_http_next_header_filter(r);
 }
 
 static ngx_int_t
@@ -257,8 +260,6 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
     if (r->method != NGX_HTTP_GET) {
         return ngx_http_next_body_filter(r, in);
     }
-
-    ngx_chain_t *chain_link = in;
 
     size_t root;
     ngx_str_t path;
@@ -268,15 +269,54 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
+    int is_audio = 0;
+    int is_mpd = 0;
     char *point = strrchr((char*)path.data, '.');
     if (strcmp((const char *)r->headers_out.content_type.data, "audio/mp4") == 0 && strcmp(point, ".mp4") != 0) {
-        inband_process_audio(r, (const char *)path.data);
+        is_audio = 1;
     }
     else if (strcmp((const char *)r->headers_out.content_type.data, "application/dash+xml") == 0) {
-        inband_process_mpd(r, (const char *)path.data);
+        is_mpd = 1;
     }
     else {
         return ngx_http_next_body_filter(r, in);
+    }
+
+    ngx_create_full_path(path.data, 0777);
+    ngx_file_t tf;
+    tf.log = r->connection->log;
+    tf.name.data = path.data;
+    tf.fd = ngx_open_file(path.data, NGX_FILE_RDWR, NGX_FILE_CREATE_OR_OPEN, NGX_FILE_DEFAULT_ACCESS);
+
+    struct stat st;
+    stat((const char*)path.data, &st);
+    if (in) {
+        ngx_write_chain_to_file(&tf, in, st.st_size, r->pool);
+    }
+
+    ngx_close_file(tf.fd);
+
+    int last_buf = 0;
+    for (ngx_chain_t *chain_link = in; chain_link; chain_link = chain_link->next) {
+        if (chain_link->buf->last_buf) {
+            last_buf = 1;
+        }
+    }
+
+    // This doesn't work for responses that take more than one call to the filter to process
+    if (!last_buf) {
+        return ngx_http_next_body_filter(r, NULL);
+    }
+
+    if (is_audio) {
+        inband_process_audio(r, (const char *)path.data);
+    }
+    else if (is_mpd) {
+        inband_process_mpd(r, (const char *)path.data);
+    }
+    else {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Unsupported file format");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     ngx_buf_t *b = (ngx_buf_t *)ngx_calloc_buf(r->pool);
@@ -289,15 +329,27 @@ ngx_http_inband_body_filter(ngx_http_request_t *r, ngx_chain_t *in) {
             (std::istreambuf_iterator<char>()));
 
     b->pos = (u_char *)ngx_palloc(r->pool, content.length());
+    if (b->pos == NULL) {
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0, "Failed to allocate memory for buffer");
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
     content.copy((char *)b->pos, content.length());
     b->last = b->pos + content.length();
     b->last_buf = 1;
     b->memory = 1;
 
-    chain_link->buf = b;
-    chain_link->next = NULL;
+    ngx_chain_t *added_link;
 
-    return ngx_http_next_body_filter(r, in);
+    added_link = ngx_alloc_chain_link(r->pool);
+    if (added_link == NULL)
+        return NGX_ERROR;
+
+    added_link->buf = b;
+    added_link->next = NULL;
+
+    ngx_delete_file(path.data);
+
+    return ngx_http_next_body_filter(r, added_link);
 }
 
 static void
